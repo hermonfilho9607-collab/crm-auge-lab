@@ -1,0 +1,9 @@
+# Só a interface (public/), as funções (api/) e o código compartilhado (lib/) vão para a Vercel.
+server.js
+iniciar.bat
+tests/
+dados/
+google-apps-script/
+.env
+.env.*
+LEIA-ME.md

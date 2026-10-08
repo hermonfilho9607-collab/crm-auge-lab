@@ -376,7 +376,8 @@ export function paraNumero(v) {
   if (typeof v === 'number') return v;
   const s = String(v ?? '').replace(/[^\d,.-]/g, '');
   if (!s) return 0;
-  const normal = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s;
+  const milhares = /^-?\d{1,3}(\.\d{3})+$/.test(s); // "1.500" é mil e quinhentos, não 1,5
+  const normal = s.includes(',') || milhares ? s.replace(/\./g, '').replace(',', '.') : s;
   const n = Number(normal);
   return Number.isFinite(n) ? n : 0;
 }

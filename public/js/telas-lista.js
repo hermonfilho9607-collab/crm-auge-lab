@@ -129,11 +129,35 @@ export function telaContatos() {
 }
 
 // ---------- DADOS ----------
-let info = null;
+function ondeFicam(db) {
+  const fonte = store.fonteDados();
+  const contagem = [h('dt', {}, 'Contatos'), h('dd', {}, `${db.contatos.length} (${db.contatos.filter(ativo).length} ativos)`)];
+  if (fonte?.tipo === 'planilha') {
+    return [
+      h('dl', { class: 'lista-def' },
+        h('dt', {}, 'Planilha Google'),
+        h('dd', {}, fonte.url
+          ? h('a', { href: fonte.url, target: '_blank', rel: 'noopener' }, fonte.nome || 'Abrir planilha', ' ', icone('externo', 'ic-inline'))
+          : 'Configurada no servidor'),
+        h('dt', {}, 'Abas'), h('dd', {}, 'Contatos (um por linha), Historico (interações e mudanças de estágio) e Ajustes.'),
+        h('dt', {}, 'Versões anteriores'), h('dd', {}, 'Na planilha: Arquivo → Histórico de versões.'),
+        ...contagem,
+      ),
+      h('p', { class: 'mudo' }, 'Pode editar a planilha à mão: o CRM percebe a mudança e pede para recarregar antes de gravar por cima. Não apague a coluna ID.'),
+    ];
+  }
+  return [
+    h('dl', { class: 'lista-def' },
+      h('dt', {}, 'Arquivo'), h('dd', {}, h('code', {}, fonte?.arquivo || 'crm-vetta\\dados\\crm.json')),
+      h('dt', {}, 'Backups automáticos'), h('dd', {}, h('code', {}, fonte?.backups || 'crm-vetta\\dados\\backups'), h('span', { class: 'mudo' }, ' — uma cópia por dia de uso, guardando os últimos 30 dias.')),
+      ...contagem,
+    ),
+    h('p', { class: 'mudo' }, 'Para guardar os contatos numa planilha Google (e usar o CRM de qualquer lugar), siga o passo a passo do LEIA-ME.'),
+  ];
+}
 
 export function telaDados() {
   const db = store.obter();
-  if (!info) fetch('/api/info').then((r) => r.json()).then((j) => { info = j; rerender(); }).catch(() => {});
   const demos = db.contatos.filter((c) => c.demo).length;
 
   const meta = h('input', { type: 'number', min: 0, step: 1, value: db.ajustes.metaContatosSemana ?? 0, class: 'input-curto' });
@@ -144,16 +168,15 @@ export function telaDados() {
 
   return h('div', { class: 'tela' },
     h('header', { class: 'tela-cab' }, h('div', {}, h('h1', { class: 'tela-titulo' }, 'Dados e ajustes'),
-      h('p', { class: 'tela-resumo' }, 'Tudo fica neste computador. Nada é enviado para a internet.'))),
+      h('p', { class: 'tela-resumo' }, store.fonteDados()?.tipo === 'planilha'
+        ? 'Os contatos ficam na sua planilha Google.'
+        : 'Tudo fica neste computador. Nada é enviado para a internet.')),
+      store.exigeSenha() && h('button', { class: 'btn', type: 'button', onclick: () => document.dispatchEvent(new CustomEvent('crm:sair')) }, icone('sair'), 'Sair')),
     h('div', { class: 'secoes' },
       h('section', { class: 'cartao', 'aria-labelledby': 'onde-t' },
         h('h2', { class: 'cartao-titulo', id: 'onde-t' }, 'Onde ficam seus dados'),
-        h('dl', { class: 'lista-def' },
-          h('dt', {}, 'Arquivo'), h('dd', {}, h('code', {}, info?.arquivo || 'crm-vetta\\dados\\crm.json')),
-          h('dt', {}, 'Backups automáticos'), h('dd', {}, h('code', {}, info?.backups || 'crm-vetta\\dados\\backups'), h('span', { class: 'mudo' }, ' — uma cópia por dia de uso, guardando os últimos 30 dias.')),
-          h('dt', {}, 'Contatos'), h('dd', {}, `${db.contatos.length} (${db.contatos.filter(ativo).length} ativos)`),
-        ),
-        h('p', { class: 'mudo' }, 'Para levar para outro computador ou guardar na nuvem, baixe o backup completo.'),
+        ondeFicam(db),
+        h('p', { class: 'mudo' }, 'O backup completo (.json) serve para guardar uma cópia ou levar os contatos para outra planilha ou computador.'),
         h('div', { class: 'linha-botoes' },
           h('button', { class: 'btn btn-primario', type: 'button', onclick: () => baixarArquivo(`crm-auge-lab-backup-${diaISO()}.json`, JSON.stringify(store.obter(), null, 2), 'application/json') }, icone('baixar'), 'Baixar backup completo'),
           h('button', {
@@ -165,7 +188,7 @@ export function telaDados() {
               try { novo = migrar(JSON.parse(await lerTexto(arq))); } catch { aviso('Esse arquivo não é um backup válido do CRM.', { tipo: 'erro' }); return; }
               const ok = await confirmar({
                 titulo: 'Restaurar backup?',
-                descricao: `O backup tem ${novo.contatos.length} contatos e vai substituir os ${store.obter().contatos.length} atuais. Um backup do estado atual já está guardado na pasta de backups.`,
+                descricao: `O backup tem ${novo.contatos.length} contatos e vai substituir os ${store.obter().contatos.length} atuais. Você ainda pode desfazer logo em seguida.`,
                 ok: 'Restaurar', perigo: true,
               });
               if (!ok) return;

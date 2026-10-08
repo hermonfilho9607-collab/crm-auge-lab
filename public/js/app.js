@@ -15,6 +15,7 @@ let rotaDesenhada = null;
 let gavetaId = null;
 let origemFoco = null;
 let agendado = false;
+let bloqueado = true; // até os dados carregarem (ou enquanto pede a senha)
 
 // ---------- tema ----------
 function aplicarTema(tema) {
@@ -32,6 +33,7 @@ function aplicarTema(tema) {
 // ---------- desenho ----------
 function desenhar() {
   agendado = false;
+  if (bloqueado) return;
   const { rota } = rotaAtual();
   const mudouRota = rota !== rotaDesenhada;
 
@@ -89,6 +91,7 @@ function atualizarNav(rota) {
 
 // ---------- ficha lateral ----------
 function sincronizarGaveta() {
+  if (bloqueado) return;
   const { contato, foco } = rotaAtual();
   if (contato) {
     if (!gaveta.open) {
@@ -140,8 +143,8 @@ document.addEventListener('crm:filtrar', (e) => {
 document.addEventListener('crm:tema', (e) => aplicarTema(e.detail));
 document.addEventListener('crm:conflito', async () => {
   const ok = await confirmar({
-    titulo: 'Os dados mudaram em outra janela',
-    descricao: 'O CRM está aberto em outra aba ou janela e ela salvou alterações. Recarregue para ver a versão mais recente (a última alteração desta aba não foi gravada).',
+    titulo: 'Os dados mudaram em outro lugar',
+    descricao: 'Outra aba, outro computador ou uma edição direta na planilha alterou os contatos. Recarregue para ver a versão mais recente (a última alteração desta tela não foi gravada).',
     ok: 'Recarregar agora',
   });
   if (ok) location.reload();
@@ -157,7 +160,7 @@ document.getElementById('btn-tema').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+  if (bloqueado || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
   const alvo = e.target;
   if (alvo.closest?.('input, textarea, select, [contenteditable]')) return;
   if (e.key === 'n' || e.key === 'N') { e.preventDefault(); novoContatoDialogo(); }
@@ -181,15 +184,108 @@ try { temaSalvo = localStorage.getItem('crm.tema') || 'auto'; } catch { /* sem s
 aplicarTema(temaSalvo);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => aplicarTema(document.documentElement.dataset.tema || 'auto'));
 
-try {
-  await store.carregar();
+// ---------- acesso: senha e erros de carregamento ----------
+function telaMensagem(titulo, ...texto) {
+  return h('div', { class: 'tela' }, h('div', { class: 'cartao erro-inicio' },
+    icone('alerta', 'vazio-ic'),
+    h('h1', { class: 'tela-titulo' }, titulo),
+    ...texto.map((t) => (typeof t === 'string' ? h('p', {}, t) : t)),
+    h('button', { class: 'btn btn-primario', type: 'button', onclick: () => location.reload() }, 'Tentar de novo'),
+  ));
+}
+
+function telaErro(e) {
+  const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+  if (e.tipo === 'config') return telaMensagem('Falta configurar o CRM', e.message);
+  if (e.tipo === 'planilha') return telaMensagem('Não consegui acessar a planilha', e.message, 'Seus dados estão na planilha e continuam lá; assim que a conexão voltar, é só tentar de novo.');
+  if (local) {
+    return telaMensagem('O servidor do CRM não está rodando',
+      h('p', {}, 'Abra o arquivo ', h('code', {}, 'iniciar.bat'), ' na pasta ', h('code', {}, 'crm-vetta'), ' (ou rode ', h('code', {}, 'node server.js'), ') e recarregue esta página.'));
+  }
+  return telaMensagem('Não foi possível falar com o servidor', e.message || 'Verifique sua conexão e tente de novo.');
+}
+
+function telaLogin({ expirou = false } = {}) {
+  const senha = h('input', { type: 'password', id: 'senha', autocomplete: 'current-password', required: true, 'aria-describedby': 'senha-erro' });
+  const mostrar = h('button', {
+    class: 'btn-icone', type: 'button', 'aria-label': 'Mostrar senha', 'aria-pressed': 'false',
+    onclick: () => {
+      const ver = senha.type === 'password';
+      senha.type = ver ? 'text' : 'password';
+      mostrar.setAttribute('aria-pressed', String(ver));
+      mostrar.setAttribute('aria-label', ver ? 'Esconder senha' : 'Mostrar senha');
+    },
+  }, icone('olho'));
+  const erro = h('p', { class: 'campo-erro', id: 'senha-erro', role: 'alert' });
+  const botao = h('button', { class: 'btn btn-primario', type: 'submit' }, 'Entrar');
+  const form = h('form', {
+    class: 'form',
+    onsubmit: async (ev) => {
+      ev.preventDefault();
+      if (!senha.value) { erro.textContent = 'Digite a senha.'; senha.focus(); return; }
+      botao.disabled = true;
+      botao.textContent = 'Entrando…';
+      erro.textContent = '';
+      let r;
+      try { r = await store.entrar(senha.value); } catch { r = { ok: false, erro: 'Sem conexão com o servidor.' }; }
+      if (!r.ok) {
+        botao.disabled = false;
+        botao.textContent = 'Entrar';
+        erro.textContent = r.erro;
+        senha.setAttribute('aria-invalid', 'true');
+        senha.select();
+        return;
+      }
+      if (expirou) {
+        liberar();
+        store.retomar();
+      } else {
+        iniciar();
+      }
+    },
+  },
+    h('div', { class: 'campo' }, h('label', { for: 'senha' }, 'Senha'), h('div', { class: 'senha-linha' }, senha, mostrar)),
+    erro,
+    botao,
+  );
+  bloqueado = true;
+  document.body.classList.add('sem-acesso');
+  if (gaveta.open) gaveta.close();
+  limpar(main, h('div', { class: 'tela' }, h('div', { class: 'cartao login' },
+    h('img', { src: 'icone.svg', alt: '', width: 40, height: 40 }),
+    h('h1', { class: 'tela-titulo' }, expirou ? 'Sua sessão expirou' : 'Entrar no CRM'),
+    h('p', { class: 'tela-resumo' }, expirou ? 'Entre de novo; o que você alterou será salvo em seguida.' : 'O CRM da Auge Lab é protegido por senha.'),
+    form,
+  )));
+  rotaDesenhada = null;
+  senha.focus();
+}
+
+function liberar() {
+  bloqueado = false;
+  document.body.classList.remove('sem-acesso');
+  rotaDesenhada = null;
   desenhar();
   sincronizarGaveta();
-} catch {
-  limpar(main, h('div', { class: 'tela' }, h('div', { class: 'cartao erro-inicio' },
-    icone('alerta', 'vazio-ic'),
-    h('h1', { class: 'tela-titulo' }, 'O servidor do CRM não está rodando'),
-    h('p', {}, 'Abra o arquivo ', h('code', {}, 'iniciar.bat'), ' na pasta ', h('code', {}, 'crm-vetta'), ' (ou rode ', h('code', {}, 'node server.js'), ') e recarregue esta página.'),
-    h('button', { class: 'btn btn-primario', type: 'button', onclick: () => location.reload() }, 'Tentar de novo'),
-  )));
 }
+
+async function iniciar() {
+  try {
+    await store.carregar();
+    liberar();
+  } catch (e) {
+    if (e.tipo === 'login') { telaLogin(); return; }
+    bloqueado = true;
+    document.body.classList.add('sem-acesso');
+    limpar(main, telaErro(e));
+  }
+}
+
+document.addEventListener('crm:login', () => telaLogin({ expirou: true }));
+document.addEventListener('crm:sair', async () => {
+  await store.sair();
+  location.hash = '#/hoje';
+  location.reload();
+});
+
+iniciar();

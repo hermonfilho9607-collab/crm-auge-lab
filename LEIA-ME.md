@@ -1,7 +1,8 @@
 # CRM Auge Lab
 
-CRM de prospecção que roda **só neste computador**: sem conta, sem internet, sem dependências e sem build.
-Um servidorzinho em Node guarda tudo em `dados/crm.json` e a interface abre no navegador.
+CRM de prospecção da Auge Lab, sem dependências e sem build. Os contatos ficam numa **planilha Google** sua
+(ou, sem planilha configurada, em `dados/crm.json` neste computador). Roda no computador pelo `iniciar.bat`
+ou na Vercel, protegido por senha.
 
 ## Abrir
 
@@ -26,7 +27,49 @@ Toda mudança de estágio fica na linha do tempo do contato, com data.
 
 Atalhos: **N** novo contato · **/** buscar · **Esc** fecha a ficha. Quase toda ação tem **Desfazer** no aviso que aparece embaixo.
 
-## Seus dados
+## Planilha Google (onde os contatos ficam)
+
+Com a planilha configurada, o CRM grava tudo numa planilha sua, com três abas: **Contatos** (um contato por linha),
+**Historico** (cada interação e mudança de estágio) e **Ajustes**. Funciona igual no computador e na Vercel,
+e dá para ver, filtrar e até editar os contatos direto no Google Sheets.
+
+### Configurar (uma vez só)
+
+1. Crie uma planilha nova no Google Sheets (ex.: "CRM Auge Lab").
+2. Na planilha: **Extensões → Apps Script**. Apague o código que aparecer e cole todo o conteúdo de
+   `google-apps-script/Codigo-pronto.gs` (já vem com o seu token secreto; o arquivo fica só no seu computador).
+   Clique em **Salvar**.
+3. **Implantar → Nova implantação** → na engrenagem, escolha **App da Web**.
+   *Executar como:* **Eu**. *Quem pode acessar:* **Qualquer pessoa**. Clique em **Implantar** e autorize com a sua conta Google
+   (se aparecer "app não verificado": *Avançado → Acessar*; o script é seu).
+4. Copie a **URL do app da Web** (termina em `/exec`) e cole no arquivo `.env`, em `GOOGLE_SHEETS_URL=`.
+5. Feche e abra o `iniciar.bat`. A tela **Dados** passa a mostrar o link da planilha.
+
+"Qualquer pessoa" só significa que a URL aceita chamadas: sem o token secreto, o script recusa tudo.
+Se mudar o código do Apps Script, use *Implantar → Gerenciar implantações → editar → Nova versão* (a URL continua a mesma).
+
+### Na Vercel
+
+Em **Settings → Environment Variables** do projeto, crie:
+
+| Variável | Valor |
+|---|---|
+| `GOOGLE_SHEETS_URL` | a mesma URL do `.env` |
+| `GOOGLE_SHEETS_TOKEN` | o mesmo token do `.env` |
+| `CRM_SENHA` | uma senha forte para entrar no CRM (obrigatória na Vercel) |
+
+Depois faça um novo deploy (*Deployments → ⋯ → Redeploy*). Sem essas variáveis o CRM mostra uma tela dizendo o que falta,
+em vez de expor ou perder dados. No computador a senha é opcional (`CRM_SENHA` no `.env`).
+
+### Editar a planilha à mão
+
+Pode: mudar células, colar linhas novas (o CRM dá um ID a elas), digitar datas como `15/10/2026` e valores como `1.500`.
+Ao editar, o CRM percebe a mudança e pede para recarregar antes de gravar por cima. Não apague a coluna **ID**.
+Para voltar no tempo: **Arquivo → Histórico de versões** da planilha.
+
+Sem `GOOGLE_SHEETS_URL`, o CRM volta ao modo antigo e guarda tudo em `dados/crm.json` (veja abaixo).
+
+## Modo sem planilha (arquivo local)
 
 - `dados/crm.json` — o banco (JSON legível). Gravação automática a cada alteração.
 - `dados/backups/` — uma cópia por dia de uso, mantendo os últimos 30 dias.
@@ -46,7 +89,10 @@ Repetidos (mesmo telefone, e-mail, Instagram ou empresa+cidade) são ignorados. 
 ## Organização
 
 ```
-server.js            servidor local (API /api/db com controle de revisão, backups, arquivos estáticos)
+server.js            servidor local (lê o .env, serve public/ e a API)
+api/                 funções da Vercel (/api/db, /api/sessao)
+lib/                 API compartilhada, senha, escolha do armazém, conversão para a planilha
+google-apps-script/  código que vai dentro da planilha (Codigo.gs; Codigo-pronto.gs tem o seu token e não vai pro git)
 public/index.html    casca da interface
 public/css/app.css   tokens (claro/escuro), layout e componentes
 public/js/core.js    regras puras: estágios, histórico, follow-ups, métricas, busca, CSV

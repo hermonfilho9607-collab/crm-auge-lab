@@ -1,2 +1,5 @@
 dados/
 node_modules/
+.env
+.vercel/
+google-apps-script/Codigo-pronto.gs
