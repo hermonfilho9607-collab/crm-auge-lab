@@ -1,0 +1,10 @@
+{
+  "name": "crm-auge-lab",
+  "private": true,
+  "type": "module",
+  "description": "CRM de prospecção da Auge Lab — roda local, sem dependências e sem build (Node 20+)",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"tests/**/*.test.js\""
+  }
+}
